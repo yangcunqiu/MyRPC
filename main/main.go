@@ -2,39 +2,36 @@ package main
 
 import (
 	myrpc "MyRPC"
-	"MyRPC/codec"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
 func main() {
+	log.SetFlags(0)
 	addr := make(chan string)
 	// 并发启动服务端
 	go startServer(addr)
 
-	// 同步channel 保证服务器监听成功, 客户端再发起请求
-	coon, _ := net.Dial("tcp", <-addr)
-	defer func() {
-		coon.Close()
-	}()
+	client, _ := myrpc.Dial("tcp", <-addr)
+	defer func() { client.Close() }()
 
 	time.Sleep(time.Second)
-	_ = json.NewEncoder(coon).Encode(myrpc.DefaultOption)
-	cc := codec.NewGobCodec(coon)
+	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
-		h := &codec.Header{
-			ServiceMethod: "Foo.Sum",
-			Seq:           uint64(i),
-		}
-		cc.Write(h, fmt.Sprintf("myrpc req %d", h.Seq))
-		cc.ReadHeader(h)
-		var reply string
-		cc.ReadBody(&reply)
-		log.Println("reply:", reply)
+		wg.Add(1)
+		go func(i int) {
+			args := fmt.Sprintf("myrpc req %d", i)
+			var reply string
+			if err := client.Call("Foo.Sum", args, &reply); err != nil {
+				log.Fatal("call Foo.Sum error:", err)
+			}
+			log.Println("reply:", reply)
+		}(i)
 	}
+	wg.Wait()
 }
 
 func startServer(addr chan string) {
