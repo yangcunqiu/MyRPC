@@ -2,8 +2,10 @@ package main
 
 import (
 	myrpc "MyRPC"
+	"context"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -21,42 +23,40 @@ func (f Foo) Sum(args Args, reply *int) error {
 
 func main() {
 	log.SetFlags(0)
-	addr := make(chan string)
+	ch := make(chan string)
 	// 并发启动服务端
-	go startServer(addr)
+	go call(ch)
+	startServer(ch)
+}
 
-	client, _ := myrpc.Dial("tcp", <-addr)
-	defer func() { client.Close() }()
+func startServer(addr chan string) {
+	var foo Foo
+	l, _ := net.Listen("tcp", ":9999")
+	_ = myrpc.Register(&foo)
+	myrpc.HandleHTTP()
+	addr <- l.Addr().String()
+	http.Serve(l, nil)
+}
+
+func call(addrCh chan string) {
+	client, _ := myrpc.DialHTTP("tcp", <-addrCh)
+	defer func() {
+		client.Close()
+	}()
 
 	time.Sleep(time.Second)
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 6; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			args := &Args{Num1: i, Num2: i * i}
 			var reply int
-			if err := client.Call("Foo.Sum", args, &reply); err != nil {
+			if err := client.Call(context.Background(), "Foo.Sum", args, &reply); err != nil {
 				log.Fatal("call Foo.Sum error:", err)
 			}
 			log.Printf("%d + %d = %d:", args.Num1, args.Num2, reply)
 		}(i)
 	}
 	wg.Wait()
-}
-
-func startServer(addr chan string) {
-	var foo Foo
-	err := myrpc.Register(foo)
-	if err != nil {
-		log.Fatal("register error:", err)
-	}
-
-	l, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatal("network error:", err)
-	}
-	log.Println("start rpc server on", l.Addr())
-	addr <- l.Addr().String()
-	myrpc.Accept(l)
 }

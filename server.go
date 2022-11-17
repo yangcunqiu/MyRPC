@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -15,6 +16,11 @@ import (
 )
 
 const MagicNumber = 0x3bef5c
+const (
+	connected        = "200 Connected to My Rpc"
+	defaultRPCPath   = "/_myrpc_"
+	defaultDebugPath = "/debug/myrpc"
+)
 
 type Option struct {
 	MagicNumber    int
@@ -227,4 +233,31 @@ func (server *Server) findService(serviceMethod string) (svc *service, mType *me
 		err = errors.New("rpc server: can`t find method " + methodName)
 	}
 	return
+}
+
+func (server *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "CONNECT" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		io.WriteString(w, "405 must CONNECT\n")
+		return
+	}
+
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		log.Print("rpc hijacker ", req.RemoteAddr, ": ", err.Error())
+		return
+	}
+	io.WriteString(conn, "HTTP/1.0 "+connected+"\n\n")
+	server.ServerCoon(conn)
+}
+
+func (server *Server) HandleHTTP() {
+	http.Handle(defaultRPCPath, server)
+	http.Handle(defaultDebugPath, debugHTTP{server})
+	log.Println("rpc server debug path:", defaultDebugPath)
+}
+
+func HandleHTTP() {
+	DefaultServer.HandleHTTP()
 }
