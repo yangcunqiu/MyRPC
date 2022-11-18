@@ -57,7 +57,7 @@ func (client *Client) Close() error {
 	return client.cc.Close()
 }
 
-func (client *Client) isAvailable() bool {
+func (client *Client) IsAvailable() bool {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	return !client.shutdown && !client.closing
