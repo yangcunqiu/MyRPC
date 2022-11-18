@@ -12,9 +12,7 @@ import (
 
 type Foo int
 
-type Args struct {
-	Num1, Num2 int
-}
+type Args struct{ Num1, Num2 int }
 
 func (f Foo) Sum(args Args, reply *int) error {
 	*reply = args.Num1 + args.Num2
@@ -25,6 +23,15 @@ func (f Foo) Sleep(args Args, reply *int) error {
 	time.Sleep(time.Second * time.Duration(args.Num1))
 	*reply = args.Num1 + args.Num2
 	return nil
+}
+
+func startServer(addrCh chan string) {
+	var foo Foo
+	l, _ := net.Listen("tcp", ":0")
+	server := myrpc.NewServer()
+	_ = server.Register(&foo)
+	addrCh <- l.Addr().String()
+	server.Accept(l)
 }
 
 func main() {
@@ -41,15 +48,6 @@ func main() {
 	time.Sleep(time.Second)
 	call(addr1, addr2)
 	broadcast(addr1, addr2)
-}
-
-func startServer(addr chan string) {
-	var foo Foo
-	l, _ := net.Listen("tcp", ":0")
-	server := myrpc.NewServer()
-	_ = myrpc.Register(&foo)
-	addr <- l.Addr().String()
-	server.Accept(l)
 }
 
 func foo(xc *xclient.XClient, ctx context.Context, typ, serviceMethod string, args *Args) {
